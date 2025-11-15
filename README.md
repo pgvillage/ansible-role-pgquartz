@@ -1,0 +1,45 @@
+PgQuartz
+=========
+
+PgQuartz is a tool to define and execute PostgreSQL jobs.
+One of the fine things is that jobs can have multiple steps, each step can be a shell script or a PostgreSQL query, 
+each step can be run multiple parallel executions (github matrix style), and that whole definition can be managed with git.
+This role installs pgquartz and runs pgquartz jobs with cron.
+This role is part of PgVillage, which is an opinated PostgreSQL deployment for Virtual Machines.
+
+Requirements
+------------
+
+This role aims at using an RPM from the MannemSolutions repo.
+
+Role Variables
+--------------
+
+Please see [defaults](https://github.com/pgvillage/ansible-role-pgquartz/blob/main/defaults/main.yml) for all variables
+
+
+Dependencies
+------------
+
+No dependencies
+
+
+Example Playbook
+----------------
+
+Including an example of how to use your role (for instance, with variables passed in as parameters) is always nice for users too:
+
+    - hosts: servers
+      roles:
+         - pgvillage.pgquartz
+
+License
+-------
+
+PostgreSQL
+
+Author Information
+------------------
+
+PgVillage is an Open Community.
+Main contributor is Nibble-IT.
