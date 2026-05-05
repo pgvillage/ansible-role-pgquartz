@@ -1,5 +1,7 @@
 ---
 galaxy_info:
+  namespace: pgvillage
+  role_name: pgquartz
   author: S. Mannem
   description: |
     PgQuartz is a tool to define and execute PostgreSQL jobs.
