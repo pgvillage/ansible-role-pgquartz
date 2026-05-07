@@ -70,14 +70,14 @@
   loop: "{{ pgquartz_local_packages }}"
 
 - name: Install pgquartz
-  ansible.builtin.dnf:
+  ansible.builtin.package:
     name: "/tmp/{{ item }}"
     disable_gpg_check: "true"
     state: "{{ pgquartz_package_state }}"
   loop: "{{ pgquartz_local_packages }}"
 
 - name: Install pgquartz
-  ansible.builtin.dnf:
+  ansible.builtin.package:
     name: "{{ item }}"
     disable_gpg_check: "true"
     state: "{{ pgquartz_package_state }}"
