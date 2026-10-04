@@ -8,7 +8,6 @@ pgquartz_osuser: pgquartz
 pgquartz_osgroup: pgquartz
 pgquartz_uid: 9745
 pgquartz_gid: 9745
-pgquartz_pguser: pgquartz
 pgquartz_package_state: present
 pgquartz_packages:
   - pgquartz
@@ -33,10 +32,6 @@ pgquartz_cert_managed: true
 pgquartz_ca_chain: "--- CA ---"
 pgquartz_cert: "--- CERT ---"
 pgquartz_cert_key: "--- KEY ---"
-
-pgquartz_client_cert: "--- CA ---"
-pgquartz_client_chain: "--- CERT ---"
-pgquartz_client_key: "--- KEY ---"
 
 pgquartz_logfolder: /var/log/pgquartz
 
