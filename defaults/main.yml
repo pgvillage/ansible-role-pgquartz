@@ -1,49 +1,79 @@
 ---
 # pgquartz
+
+# Address cron mails job output to (used for the MAILTO cronvar in pgquartz_cronvars).
 pgquartz_cron_mailto: "{{ pgquartz_osuser }}@{{ inventory_hostname }}"
 
+# Directory holding the pgquartz configuration.
 pgquartz_configdir: /etc/pgquartz
+# Directory holding the pgquartz job definitions.
 pgquartz_jobsdir: "{{ pgquartz_configdir }}/jobs"
+
+# OS user that owns the pgquartz files and runs the jobs.
 pgquartz_osuser: pgquartz
+# OS group of pgquartz_osuser.
 pgquartz_osgroup: pgquartz
+# UID for pgquartz_osuser.
 pgquartz_uid: 9745
+# GID for pgquartz_osgroup.
 pgquartz_gid: 9745
+
+# State of the pgquartz packages, OS user and OS group (present, absent, latest, ...).
 pgquartz_package_state: present
+# Packages to install from the configured package repositories.
 pgquartz_packages:
   - pgquartz
   - git
 
+# Local package files (relative to the role / playbook files path) to copy to /tmp and install.
 pgquartz_local_packages: []
+
+# Git repositories with job definitions to check out (only used with the cron scheduler).
+# Each item has:
+# - url: git repository to clone
+# - dest: directory to clone into
+# - branch: branch / tag / commit to check out (default: master)
 pgquartz_definitions: []
 # - url: https://[user]:[apikey]@github.com/mannemsolutions/pgquartz_jobs.git
 #   dest: "{{ pgquartz_jobsdir }}/jobs/"
 #   branch: dev
 
+# Jobs to schedule (only used with the cron scheduler).
+# Each item has:
+# - name: job name; runs pgquartz with config {{ pgquartz_jobsdir }}/{{ name }}.yml
+# - minute, hour, dom, month, dow: cron schedule fields (default: '*')
 pgquartz_jobs: []
-# This will create a folder /etc/pgquartz/jobs/myjobs, clone https://github.com/my-project-with-jobs.git there
-# And schedule /etc/pgquartz/jobs/myjobs/myjob.yml every minute of every day at 00 seconds.
-#  - url: https://github.com/my-project-with-jobs.git
-#    dest: "{{ pgquartz_jobsdir }}/myjobs"
-#    job: myjob.yml
-#    schedule: "*-*-* *:*:00"
+# This will run /etc/pgquartz/jobs/myjob.yml every day at 01:30.
+#  - name: myjob
+#    minute: "30"
+#    hour: "1"
 
+# When true, deploy the certificates below to ~/.postgresql/ of pgquartz_osuser
+# so that pgquartz can connect to PostgreSQL with client certificate authentication.
 pgquartz_cert_managed: true
 
+# CA chain (PEM) deployed as ~/.postgresql/root.crt.
 pgquartz_ca_chain: "--- CA ---"
+# Client certificate (PEM) deployed as ~/.postgresql/postgresql.crt.
 pgquartz_cert: "--- CERT ---"
+# Client private key (PEM) deployed as ~/.postgresql/postgresql.key.
 pgquartz_cert_key: "--- KEY ---"
 
+# Directory for pgquartz log files.
 pgquartz_logfolder: /var/log/pgquartz
 
-# Can be systemd, cron or external. Systemd is default.
+# Scheduler used to run the jobs; includes tasks/jobs_<pgquartz_scheduler>.yml.
+# Available implementations: cron, timer (systemd) and external (nothing is scheduled).
 pgquartz_scheduler: systemd
 
+# Variables set in /etc/cron.d/pgquartz (only used with the cron scheduler).
 pgquartz_cronvars:
   - name: MAILTO
     value: "{{ pgquartz_cron_mailto }}"
   - name: LOGFILE
     value: "{{ pgquartz_logfolder }}"
 
+# Content of /etc/logrotate.d/pgquartz (only used with the cron scheduler).
 pgquartz_logrotate_config: |
   {{ pgquartz_logfolder }}/*.log {
       daily
