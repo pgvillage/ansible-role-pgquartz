@@ -18,7 +18,8 @@ pgquartz_uid: 9745
 # GID for pgquartz_osgroup.
 pgquartz_gid: 9745
 
-# State of the pgquartz packages, OS user and OS group (present, absent, latest, ...).
+# State of the pgquartz packages (present, absent, latest, ...).
+# Note tht pgquartz_osuser and pgquartz_osgroup are not created when we don't install (pgquartz_package_state=absent)
 pgquartz_package_state: present
 # Packages to install from the configured package repositories.
 pgquartz_packages:
