@@ -38,7 +38,7 @@
       ansible.builtin.copy:
         dest: /etc/pgquartz/jobs/molecule.yml
         content: |
-          debug: true
+          parallel: 1
           workdir: /tmp
           timeout: 1m
           steps:
