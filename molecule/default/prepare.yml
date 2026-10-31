@@ -1,0 +1,47 @@
+---
+- name: Prepare
+  hosts: all
+  vars:
+    pgvillage_repo: https://repo.pgvillage.org/yum/v0.3.8
+  tasks:
+    - name: Add the pgvillage package repo, so the role installs pgquartz by name
+      ansible.builtin.yum_repository:
+        name: pgvillage
+        description: pgvillage packages
+        baseurl: "{{ pgvillage_repo }}/el$releasever/$basearch/"
+        gpgcheck: true
+        gpgkey: https://repo.pgvillage.org/yum/pgvillage.asc
+
+    # The role schedules the jobs in /etc/cron.d, which needs cron
+    - name: Install cron
+      ansible.builtin.dnf:
+        name: cronie
+        state: present
+
+    # pgquartz locks every job in etcd (by default on localhost:2379), so
+    # running a job needs etcd: run a single etcd from the pgvillage repo
+    - name: Install etcd
+      ansible.builtin.dnf:
+        name: etcd
+        state: present
+
+    - name: Create a unit for a local etcd
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/molecule-etcd.service
+        content: |
+          [Service]
+          ExecStart=/usr/bin/etcd --data-dir /var/lib/molecule-etcd
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0644"
+
+    - name: Start etcd
+      ansible.builtin.systemd:
+        name: molecule-etcd
+        state: started
+        daemon_reload: true
+
+    - name: Wait for etcd
+      ansible.builtin.wait_for:
+        port: 2379
+        timeout: 30
