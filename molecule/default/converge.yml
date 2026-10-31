@@ -1,0 +1,14 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    # As in pgvillage (inventories/standard)
+    pgquartz_cert_managed: false
+    pgquartz_scheduler: cron
+    pgquartz_cron_mailto: root
+    pgquartz_jobs:
+      - name: molecule
+        minute: "30"
+        hour: "1"
+  roles:
+    - role: pgvillage.pgquartz

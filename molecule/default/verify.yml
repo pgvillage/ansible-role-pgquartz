@@ -1,0 +1,69 @@
+---
+- name: Verify
+  hosts: all
+  tasks:
+    - name: Read the cron file
+      ansible.builtin.slurp:
+        src: /etc/cron.d/pgquartz
+      register: cron_file
+
+    - name: Check the cron variables and the job
+      ansible.builtin.assert:
+        that:
+          - "'MAILTO=root' in cron_lines"
+          - "'LOGFILE=/var/log/pgquartz' in cron_lines"
+          - job_lines | length == 1
+        fail_msg: "{{ cron_lines }}"
+      vars:
+        cron_lines: "{{ (cron_file.content | b64decode).splitlines() }}"
+        job_lines: >-
+          {{ cron_lines | select('match', "30 1 \* \* \* pgquartz /usr/bin/pgquartz -c '/etc/pgquartz/jobs/molecule.yml'") | list }}
+
+    - name: Check the logrotate config and the log folder
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: [/etc/logrotate.d/pgquartz, /var/log/pgquartz]
+      register: files
+      failed_when: not files.stat.exists
+
+    - name: Check that the pgquartz user exists with the configured uid
+      ansible.builtin.getent:
+        database: passwd
+        key: pgquartz
+      failed_when: getent_passwd.pgquartz[1] != '9745'
+
+    # Run the job as cron would: a job with a shell step (pgquartz locks it in
+    # the local etcd from prepare.yml)
+    - name: Create the job definition of the scheduled job
+      ansible.builtin.copy:
+        dest: /etc/pgquartz/jobs/molecule.yml
+        content: |
+          parallel: 1
+          workdir: /tmp
+          timeout: 1m
+          steps:
+            touch:
+              commands:
+                - name: Leave a mark
+                  type: shell
+                  inline: echo ran > /tmp/molecule-pgquartz
+        owner: pgquartz
+        group: pgquartz
+        mode: "0644"
+
+    - name: Run the job like the cron entry does, as pgquartz
+      become: true
+      become_user: pgquartz
+      ansible.builtin.command: /usr/bin/pgquartz -c /etc/pgquartz/jobs/molecule.yml
+      register: job_run
+      changed_when: false
+
+    - name: Look for the mark the job leaves
+      ansible.builtin.stat:
+        path: /tmp/molecule-pgquartz
+      register: mark_file
+
+    - name: Check that the job ran
+      ansible.builtin.assert:
+        that: mark_file.stat.exists
+        fail_msg: "{{ job_run.stdout_lines + job_run.stderr_lines }}"
