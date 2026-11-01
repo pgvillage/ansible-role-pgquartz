@@ -1,6 +1,7 @@
 ---
-# Renders and schedules the pgquartz jobs for one PostgreSQL instance (an item of pgquartz_instances).
-# Included from jobs_cron.yml with loop_var pgquartz_instance and pgquartz_instance_jobs set.
+# Renders the pgquartz jobs for one PostgreSQL instance (an item of pgquartz_instances).
+# Included from definitions.yml with loop_var pgquartz_instance and pgquartz_instance_jobs set.
+# The jobs are scheduled by jobs_<pgquartz_scheduler>.yml (see pgquartz_scheduled_jobs).
 - name: Create job folders for instance {{ pgquartz_instance.key }}
   ansible.builtin.file:
     path: "{{ (pgquartz_instancesdir ~ '/' ~ pgquartz_instance.key ~ '/' ~ item.name) | dirname }}"
@@ -38,18 +39,3 @@
   loop: "{{ pgquartz_instance_definitions.results }}"
   loop_control:
     label: "{{ item.item.name }}"
-
-- name: Cronjobs for instance {{ pgquartz_instance.key }}
-  ansible.builtin.cron:
-    cron_file: pgquartz
-    user: "{{ pgquartz_osuser }}"
-    name: "pgQuartz job {{ pgquartz_instance.key }} {{ item.name }}"
-    job: "/usr/bin/pgquartz -c '{{ pgquartz_instancesdir }}/{{ pgquartz_instance.key }}/{{ item.name }}.yml' > /dev/null"
-    minute: "{{ item.minute | default('*') }}"
-    hour: "{{ item.hour | default('*') }}"
-    dom: "{{ item.dom | default('*') }}"
-    dow: "{{ item.dow | default('*') }}"
-    month: "{{ item.month | default('*') }}"
-  loop: "{{ pgquartz_instance_jobs }}"
-  loop_control:
-    label: "{{ item.name }}"

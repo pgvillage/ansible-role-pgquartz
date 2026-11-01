@@ -1,0 +1,24 @@
+---
+- name: Prepare like the default scenario
+  ansible.builtin.import_playbook: ../default/prepare.yml
+
+# Leftovers the role should clean up: units of older versions of the role (where
+# pgquartz.timer was a copy of the service) and a cron file of the cron scheduler
+- name: Prepare leftovers
+  hosts: all
+  tasks:
+    - name: Create units of older versions of the role
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item }}"
+        content: |
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/true
+        mode: "0600"
+      loop: [pgquartz.service, pgquartz.timer, pgquartz-obsolete.service]
+
+    - name: Create a cron file of the cron scheduler
+      ansible.builtin.copy:
+        dest: /etc/cron.d/pgquartz
+        content: "#Ansible: pgQuartz job molecule\n30 1 * * * pgquartz /usr/bin/pgquartz\n"
+        mode: "0644"

@@ -1,0 +1,54 @@
+---
+# Schedules every job in pgquartz_scheduled_jobs with a systemd timer (<unit>.timer) that starts a oneshot service
+# (<unit>.service) running pgquartz as pgquartz_osuser.
+- name: Delete cron file
+  ansible.builtin.file:
+    dest: "/etc/cron.d/pgquartz"
+    state: absent
+
+- name: Deploy job services
+  ansible.builtin.template:
+    src: pgquartz.service.j2
+    dest: "/etc/systemd/system/{{ item.unit }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ pgquartz_scheduled_jobs }}"
+  loop_control:
+    label: "{{ item.unit }}"
+
+- name: Deploy job timers
+  ansible.builtin.template:
+    src: pgquartz.timer.j2
+    dest: "/etc/systemd/system/{{ item.unit }}.timer"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ pgquartz_scheduled_jobs }}"
+  loop_control:
+    label: "{{ item.unit }}"
+  register: pgquartz_timer_units
+
+- name: Remove obsolete job units
+  ansible.builtin.include_tasks: systemd_cleanup.yml
+  vars:
+    pgquartz_keep_units: "{{ pgquartz_scheduled_jobs | map(attribute='unit') | list }}"
+
+- name: Enable and start job timers
+  ansible.builtin.systemd:
+    name: "{{ item.unit }}.timer"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop: "{{ pgquartz_scheduled_jobs }}"
+  loop_control:
+    label: "{{ item.unit }}"
+
+# A running timer keeps its old schedule until it is restarted
+- name: Restart job timers with a changed schedule
+  ansible.builtin.systemd:
+    name: "{{ item.item.unit }}.timer"
+    state: restarted
+  loop: "{{ pgquartz_timer_units.results | selectattr('changed') | list }}"
+  loop_control:
+    label: "{{ item.item.unit }}"

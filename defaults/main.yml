@@ -29,7 +29,7 @@ pgquartz_packages:
 # Local package files (relative to the role / playbook files path) to copy to /tmp and install.
 pgquartz_local_packages: []
 
-# Git repositories with job definitions to check out (only used with the cron scheduler).
+# Git repositories with job definitions to check out (used with the cron and systemd schedulers).
 # Each item has:
 # - url: git repository to clone
 # - dest: directory to clone into
@@ -39,10 +39,11 @@ pgquartz_definitions: []
 #   dest: "{{ pgquartz_jobsdir }}/jobs/"
 #   branch: dev
 
-# Jobs to schedule (only used with the cron scheduler).
+# Jobs to schedule (used with the cron and systemd schedulers).
 # Each item has:
 # - name: job name; runs pgquartz with config {{ pgquartz_jobsdir }}/{{ name }}.yml
 # - minute, hour, dom, month, dow: cron schedule fields (default: '*')
+# - on_calendar: systemd OnCalendar schedule (systemd scheduler only; default: converted from the cron fields)
 pgquartz_jobs: []
 # This will run /etc/pgquartz/jobs/myjob.yml every day at 01:30.
 #  - name: myjob
@@ -52,7 +53,7 @@ pgquartz_jobs: []
 # Directory holding the job definitions rendered per PostgreSQL instance (see pgquartz_instances).
 pgquartz_instancesdir: "{{ pgquartz_configdir }}/instances"
 
-# PostgreSQL instances to run the jobs for (multi-instance, only used with the cron scheduler).
+# PostgreSQL instances to run the jobs for (multi-instance, used with the cron and systemd schedulers).
 # When empty, pgquartz_jobs run as is. When set, every job runs once per instance instead:
 # {{ pgquartz_jobsdir }}/<job>.yml is rendered to {{ pgquartz_instancesdir }}/<instance>/<job>.yml with
 # - conn_params of the instance combined into the conn_params of every connection of the job;
@@ -89,7 +90,11 @@ pgquartz_cert_key: "--- KEY ---"
 pgquartz_logfolder: /var/log/pgquartz
 
 # Scheduler used to run the jobs; includes tasks/jobs_<pgquartz_scheduler>.yml.
-# Available implementations: cron, timer (systemd) and external (nothing is scheduled).
+# Available implementations:
+# - systemd: a systemd timer and oneshot service per job (pgquartz-<job> or pgquartz-<instance>-<job>)
+# - cron: an entry per job in /etc/cron.d/pgquartz
+# - external: nothing is scheduled
+# 'timer' is a deprecated alias of 'systemd'.
 pgquartz_scheduler: systemd
 
 # Variables set in /etc/cron.d/pgquartz (only used with the cron scheduler).
@@ -99,7 +104,7 @@ pgquartz_cronvars:
   - name: LOGFILE
     value: "{{ pgquartz_logfolder }}"
 
-# Content of /etc/logrotate.d/pgquartz (only used with the cron scheduler).
+# Content of /etc/logrotate.d/pgquartz (used with the cron and systemd schedulers).
 # The second pattern covers the default log folders of pgquartz_instances.
 pgquartz_logrotate_config: |
   {{ pgquartz_logfolder }}/*.log {{ pgquartz_logfolder }}/*/*.log {
