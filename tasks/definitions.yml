@@ -1,0 +1,34 @@
+---
+# Job definitions, log folder and logrotate, for the cron and systemd schedulers.
+- name: Create logfolder
+  ansible.builtin.file:
+    dest: "{{ pgquartz_logfolder }}"
+    state: directory
+    owner: "{{ pgquartz_osuser }}"
+    group: "{{ pgquartz_osgroup }}"
+    mode: "0700"
+
+- name: Git checkout
+  ansible.builtin.git:
+    repo: "{{ item.url }}"
+    dest: "{{ item.dest }}"
+    version: "{{ item.branch | default('master') }}"
+    force: true
+  loop: "{{ pgquartz_definitions }}"
+
+- name: Job definitions per PostgreSQL instance
+  ansible.builtin.include_tasks: instance.yml
+  vars:
+    pgquartz_instance_jobs: "{{ (pgquartz_instance.value | default({}, true)).jobs | default(pgquartz_jobs) }}"
+  loop: "{{ pgquartz_instances | dict2items }}"
+  loop_control:
+    loop_var: pgquartz_instance
+    label: "{{ pgquartz_instance.key }}"
+
+- name: Add logrotate
+  ansible.builtin.copy:
+    content: "{{ pgquartz_logrotate_config }}"
+    dest: /etc/logrotate.d/pgquartz
+    mode: "0644"
+    owner: root
+    group: root

@@ -1,5 +1,8 @@
 ---
 - name: Install
   ansible.builtin.include_tasks: "install.yml"
+- name: Job definitions
+  ansible.builtin.include_tasks: "definitions.yml"
+  when: pgquartz_scheduler != 'external'
 - name: Schedule
   ansible.builtin.include_tasks: "jobs_{{ pgquartz_scheduler }}.yml"

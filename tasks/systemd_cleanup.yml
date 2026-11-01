@@ -1,0 +1,29 @@
+---
+# Stops, disables and removes the pgquartz systemd units that are not in pgquartz_keep_units (unit names without
+# suffix), including pgquartz.service / pgquartz.timer of older versions of this role.
+- name: Find pgquartz systemd units
+  ansible.builtin.find:
+    paths: /etc/systemd/system
+    patterns: ["pgquartz-*.service", "pgquartz-*.timer", "pgquartz.service", "pgquartz.timer"]
+  register: pgquartz_units_found
+
+# Best effort: systemd can't load a broken unit (like the pgquartz.timer of older versions of this role, which is a
+# copy of the service), and the unit file is removed below anyway
+- name: Stop and disable obsolete pgquartz units
+  ansible.builtin.systemd:
+    name: "{{ item | basename }}"
+    state: stopped
+    enabled: false
+  loop: "{{ pgquartz_obsolete_units }}"
+  failed_when: false
+
+- name: Remove obsolete pgquartz units
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ pgquartz_obsolete_units }}"
+
+- name: Reload systemd after removing units
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: pgquartz_obsolete_units | length > 0

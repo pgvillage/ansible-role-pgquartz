@@ -1,0 +1,42 @@
+---
+# Internal variables (not meant to be overridden).
+
+# The jobs to schedule, the same for every scheduler: pgquartz_jobs, or with pgquartz_instances the jobs of every
+# instance. Each item is the job (name, minute, hour, dom, month, dow, on_calendar) with:
+# - instance: the instance name ('' without pgquartz_instances)
+# - label: '<name>' or '<instance> <name>' (used in the cron entry name 'pgQuartz job <label>')
+# - config: the job definition pgquartz runs
+# - unit: the name of the systemd service and timer units (pgquartz-<name> or pgquartz-<instance>-<name>)
+pgquartz_scheduled_jobs: >-
+  {%- set jobs = [] -%}
+  {%- if pgquartz_instances | length > 0 -%}
+    {%- for instance, settings in pgquartz_instances.items() -%}
+      {%- for job in (settings | default({}, true)).jobs | default(pgquartz_jobs) -%}
+        {%- set _ = jobs.append(job | combine({
+              'instance': instance,
+              'label': instance ~ ' ' ~ job.name,
+              'config': pgquartz_instancesdir ~ '/' ~ instance ~ '/' ~ job.name ~ '.yml',
+              'unit': 'pgquartz-' ~ ((instance ~ '-' ~ job.name) | regex_replace('[^A-Za-z0-9:_.-]', '-')),
+            })) -%}
+      {%- endfor -%}
+    {%- endfor -%}
+  {%- else -%}
+    {%- for job in pgquartz_jobs -%}
+      {%- set _ = jobs.append(job | combine({
+            'instance': '',
+            'label': job.name,
+            'config': pgquartz_jobsdir ~ '/' ~ job.name ~ '.yml',
+            'unit': 'pgquartz-' ~ (job.name | regex_replace('[^A-Za-z0-9:_.-]', '-')),
+          })) -%}
+    {%- endfor -%}
+  {%- endif -%}
+  {{ jobs }}
+
+# Paths of the pgquartz systemd units found by systemd_cleanup.yml that are not in pgquartz_keep_units.
+pgquartz_obsolete_units: >-
+  {{
+    pgquartz_units_found.files | map(attribute='path') |
+    reject('in', pgquartz_keep_units | product(['.service', '.timer']) | map('join') |
+                 map('regex_replace', '^', '/etc/systemd/system/') | list) |
+    list
+  }}

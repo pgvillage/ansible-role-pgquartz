@@ -1,0 +1,77 @@
+---
+- name: Verify
+  hosts: all
+  vars:
+    # unit -> the normalized schedule systemd reports
+    expected_timers:
+      pgquartz-cluster1-molecule: "*-*-* 01:30:00"
+      pgquartz-cluster1-shell: "Mon..Fri *-*-* 08..18:00/15:00"
+      pgquartz-cluster2-molecule: "Sun *-*-* 03:00:00"
+  tasks:
+    - name: Look for files that should be gone
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/cron.d/pgquartz
+        - /etc/systemd/system/pgquartz.service
+        - /etc/systemd/system/pgquartz.timer
+        - /etc/systemd/system/pgquartz-obsolete.service
+        - /etc/systemd/system/pgquartz-cluster2-shell.timer
+      register: gone
+      failed_when: gone.stat.exists
+
+    - name: Read the state and schedule of the timers
+      ansible.builtin.systemd:
+        name: "{{ item }}.timer"
+      loop: "{{ expected_timers.keys() | list }}"
+      register: timers
+
+    - name: Check that the timers are enabled, active, and have the schedule of the job
+      ansible.builtin.assert:
+        that:
+          - item.status.UnitFileState == 'enabled'
+          - item.status.ActiveState == 'active'
+          - item.status.Unit == item.item ~ '.service'
+          - ('OnCalendar=' ~ expected_timers[item.item] ~ ' ;') in item.status.TimersCalendar
+        fail_msg: >-
+          UnitFileState={{ item.status.UnitFileState }} ActiveState={{ item.status.ActiveState }}
+          Unit={{ item.status.Unit }} TimersCalendar={{ item.status.TimersCalendar }}
+      loop: "{{ timers.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read the service of cluster1 shell
+      ansible.builtin.systemd:
+        name: pgquartz-cluster1-shell.service
+      register: service
+
+    - name: Check the service runs the job of the instance as pgquartz
+      ansible.builtin.assert:
+        that:
+          - service.status.User == 'pgquartz'
+          - service.status.Type == 'oneshot'
+          - "'/etc/pgquartz/instances/cluster1/shell.yml' in service.status.ExecStart"
+        fail_msg: "User={{ service.status.User }} Type={{ service.status.Type }} ExecStart={{ service.status.ExecStart }}"
+
+    - name: Run the shell job of cluster1 like its timer does
+      ansible.builtin.systemd:
+        name: pgquartz-cluster1-shell.service
+        state: started
+
+    - name: Look for the mark the job leaves and its log file
+      ansible.builtin.find:
+        paths: [/tmp, /var/log/pgquartz/cluster1]
+        patterns: ["molecule-pgquartz", "*_shell.log"]
+      register: found
+
+    - name: Read the journal of the job
+      ansible.builtin.command: journalctl -u pgquartz-cluster1-shell.service --no-pager
+      register: journal
+      changed_when: false
+
+    - name: Check that the job ran and logged to the folder of cluster1
+      ansible.builtin.assert:
+        that:
+          - found.files | selectattr('path', 'equalto', '/tmp/molecule-pgquartz') | list | length == 1
+          - found.files | selectattr('path', 'match', '/var/log/pgquartz/cluster1/.*_shell.log') | list | length == 1
+        fail_msg: "{{ journal.stdout_lines + (found.files | map(attribute='path') | list) }}"

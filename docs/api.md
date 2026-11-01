@@ -42,15 +42,14 @@ Default: `/etc/pgquartz`
 ### `pgquartz_jobsdir`
 
 Directory holding the pgquartz job definitions. Created like `pgquartz_configdir`.
-With the cron scheduler, job `<name>` runs `{{ pgquartz_jobsdir }}/<name>.yml`.
+Job `<name>` runs `{{ pgquartz_jobsdir }}/<name>.yml`.
 
 Default: `{{ pgquartz_configdir }}/jobs`
 
 ### `pgquartz_logfolder`
 
-Directory for pgquartz log files. With the cron scheduler it is created (mode `0700`),
-passed as the `LOGFILE` cronvar and used by `pgquartz_logrotate_config`.
-With the timer scheduler it is removed.
+Directory for pgquartz log files. With the `cron` and `systemd` schedulers it is created (mode `0700`)
+and used by `pgquartz_logrotate_config`. With the `cron` scheduler it is also passed as the `LOGFILE` cronvar.
 
 Default: `/var/log/pgquartz`
 
@@ -151,15 +150,20 @@ Available implementations:
 
 | Value | Behaviour |
 | --- | --- |
-| `cron` | Checks out `pgquartz_definitions`, schedules `pgquartz_jobs` (per instance with `pgquartz_instances`) in `/etc/cron.d/pgquartz`, sets `pgquartz_cronvars` and deploys `pgquartz_logrotate_config` |
-| `timer` | Deploys systemd `pgquartz.service` / `pgquartz.timer` units and removes the cron file and log folder |
+| `systemd` | Schedules every job with a systemd timer and oneshot service (see [systemd units](#systemd-units)), and removes the cron file |
+| `cron` | Schedules every job in `/etc/cron.d/pgquartz`, sets `pgquartz_cronvars`, and removes the systemd units of the role |
 | `external` | Nothing is scheduled; scheduling is left to an external tool |
+| `timer` | Deprecated alias of `systemd` |
+
+With `cron` and `systemd` the role also checks out `pgquartz_definitions`, renders the jobs per instance
+(`pgquartz_instances`), creates `pgquartz_logfolder` and deploys `pgquartz_logrotate_config`.
+Switching between `cron` and `systemd` cleans up the other one.
 
 Default: `systemd`
 
 ### `pgquartz_definitions`
 
-Git repositories with job definitions to check out (only used with the `cron` scheduler).
+Git repositories with job definitions to check out (used with the `cron` and `systemd` schedulers).
 
 | Key | Required | Default | Description |
 | --- | --- | --- | --- |
@@ -180,7 +184,7 @@ pgquartz_definitions:
 
 ### `pgquartz_jobs`
 
-Jobs to schedule (only used with the `cron` scheduler). Each job runs
+Jobs to schedule (used with the `cron` and `systemd` schedulers). Each job runs
 `pgquartz -c '{{ pgquartz_jobsdir }}/<name>.yml'` as `pgquartz_osuser`.
 
 | Key | Required | Default | Description |
@@ -191,6 +195,7 @@ Jobs to schedule (only used with the `cron` scheduler). Each job runs
 | `dom` | no | `*` | Cron day of month |
 | `month` | no | `*` | Cron month |
 | `dow` | no | `*` | Cron day of week |
+| `on_calendar` | no | from the cron fields | systemd `OnCalendar` schedule (`systemd` scheduler only), e.g. `Sun *-*-* 03:00:00` |
 
 Default: `[]`
 
@@ -205,14 +210,14 @@ pgquartz_jobs:
 
 ### `pgquartz_instances`
 
-PostgreSQL instances to run the jobs for (multi-instance, only used with the `cron` scheduler).
+PostgreSQL instances to run the jobs for (multi-instance, used with the `cron` and `systemd` schedulers).
 
 When empty, `pgquartz_jobs` run as is (single instance). When set, every job runs once per instance instead,
 and the jobs of `pgquartz_jobs` are no longer scheduled without an instance (their cron entries are removed).
 For every instance and job the role renders `{{ pgquartz_jobsdir }}/<job>.yml` (after the git checkout of
 `pgquartz_definitions`) to `{{ pgquartz_instancesdir }}/<instance>/<job>.yml` and schedules
-`pgquartz -c '{{ pgquartz_instancesdir }}/<instance>/<job>.yml'` in `/etc/cron.d/pgquartz` as cron entry
-`pgQuartz job <instance> <job>`.
+`pgquartz -c '{{ pgquartz_instancesdir }}/<instance>/<job>.yml'`: with `cron` as cron entry
+`pgQuartz job <instance> <job>`, with `systemd` as units `pgquartz-<instance>-<job>.timer` / `.service`.
 
 The rendered job definition is a copy of the original job, with:
 
@@ -264,6 +269,32 @@ Directory holding the job definitions rendered per instance (see `pgquartz_insta
 
 Default: `{{ pgquartz_configdir }}/instances`
 
+### systemd units
+
+With `pgquartz_scheduler: systemd` every job (per instance with `pgquartz_instances`) gets two units in
+`/etc/systemd/system`, named `pgquartz-<job>` (or `pgquartz-<instance>-<job>`; characters that are not allowed in
+unit names, like `/`, become `-`):
+
+| Unit | Description |
+| --- | --- |
+| `<unit>.service` | `Type=oneshot` service that runs `/usr/bin/pgquartz -c <job definition>` as `pgquartz_osuser`. Output goes to the journal (`journalctl -u <unit>.service`). |
+| `<unit>.timer` | Timer that starts the service on `OnCalendar`. Enabled and started; restarted when the schedule changes. |
+
+`OnCalendar` is the `on_calendar` of the job, or else converted from the cron fields of the job:
+
+| Cron | `OnCalendar` |
+| --- | --- |
+| `minute: "30"`, `hour: "1"` | `*-*-* 1:30:00` |
+| `minute: "*/15"`, `hour: "8-18"`, `dow: "1-5"` | `Mon..Fri *-*-* 8..18:0/15:00` |
+| `minute: "0"`, `hour: "3"`, `dow: "0,6"` | `Sun,Sat *-*-* 3:0:00` |
+
+Numbers, `*`, lists (`,`), ranges (`-`), steps (`*/n`, `m/n`) and day names in `dow` are converted. Set `on_calendar` for anything else
+(month names, steps in `dow`, ranges with steps), or when both `dom` and `dow` are set: cron runs
+the job when either matches, systemd only when both match, so the role fails on that instead of guessing.
+
+Units of jobs that are no longer scheduled (and `pgquartz.service` / `pgquartz.timer` of older versions of this
+role) are stopped, disabled and removed.
+
 ### `pgquartz_cron_mailto`
 
 Address cron mails job output to. Used for the `MAILTO` entry in `pgquartz_cronvars`.
@@ -287,7 +318,7 @@ pgquartz_cronvars:
 
 ### `pgquartz_logrotate_config`
 
-Content of `/etc/logrotate.d/pgquartz` (only used with the `cron` scheduler).
+Content of `/etc/logrotate.d/pgquartz` (used with the `cron` and `systemd` schedulers).
 
 Default:
 

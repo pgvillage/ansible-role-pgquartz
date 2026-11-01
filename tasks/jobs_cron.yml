@@ -1,12 +1,4 @@
 ---
-- name: Create logfolder
-  ansible.builtin.file:
-    dest: "{{ pgquartz_logfolder }}"
-    state: directory
-    owner: "{{ pgquartz_osuser }}"
-    group: "{{ pgquartz_osgroup }}"
-    mode: "0700"
-
 - name: Set cronvars
   community.general.cronvar:
     name: "{{ item.name }}"
@@ -16,44 +8,33 @@
   loop_control:
     label: "{{ item.name }}"
 
-- name: Git checkout
-  ansible.builtin.git:
-    repo: "{{ item.url }}"
-    dest: "{{ item.dest }}"
-    version: "{{ item.branch | default('master') }}"
-    force: true
-  loop: "{{ pgquartz_definitions }}"
+# With pgquartz_instances, jobs only run per instance
+- name: Remove cronjobs without instance
+  ansible.builtin.cron:
+    cron_file: pgquartz
+    user: "{{ pgquartz_osuser }}"
+    name: "pgQuartz job {{ item.name }}"
+    state: absent
+  loop: "{{ pgquartz_jobs if pgquartz_instances | length > 0 else [] }}"
+  loop_control:
+    label: "{{ item.name }}"
 
 - name: Cronjobs
   ansible.builtin.cron:
     cron_file: pgquartz
     user: "{{ pgquartz_osuser }}"
-    name: "pgQuartz job {{ item.name }}"
-    job: "/usr/bin/pgquartz -c '{{ pgquartz_jobsdir }}/{{ item.name }}.yml' > /dev/null"
+    name: "pgQuartz job {{ item.label }}"
+    job: "/usr/bin/pgquartz -c '{{ item.config }}' > /dev/null"
     minute: "{{ item.minute | default('*') }}"
     hour: "{{ item.hour | default('*') }}"
     dom: "{{ item.dom | default('*') }}"
     dow: "{{ item.dow | default('*') }}"
     month: "{{ item.month | default('*') }}"
-    # With pgquartz_instances, jobs only run per instance (see instance.yml)
-    state: "{{ 'absent' if pgquartz_instances | length > 0 else 'present' }}"
-  loop: "{{ pgquartz_jobs }}"
+  loop: "{{ pgquartz_scheduled_jobs }}"
   loop_control:
-    label: "{{ item.name }}"
+    label: "{{ item.label }}"
 
-- name: Jobs per PostgreSQL instance
-  ansible.builtin.include_tasks: instance.yml
+- name: Remove systemd job units
+  ansible.builtin.include_tasks: systemd_cleanup.yml
   vars:
-    pgquartz_instance_jobs: "{{ (pgquartz_instance.value | default({}, true)).jobs | default(pgquartz_jobs) }}"
-  loop: "{{ pgquartz_instances | dict2items }}"
-  loop_control:
-    loop_var: pgquartz_instance
-    label: "{{ pgquartz_instance.key }}"
-
-- name: Add logrotate
-  ansible.builtin.copy:
-    content: "{{ pgquartz_logrotate_config }}"
-    dest: /etc/logrotate.d/pgquartz
-    mode: "0644"
-    owner: root
-    group: root
+    pgquartz_keep_units: []
