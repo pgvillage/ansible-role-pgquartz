@@ -49,6 +49,31 @@ pgquartz_jobs: []
 #    minute: "30"
 #    hour: "1"
 
+# Directory holding the job definitions rendered per PostgreSQL instance (see pgquartz_instances).
+pgquartz_instancesdir: "{{ pgquartz_configdir }}/instances"
+
+# PostgreSQL instances to run the jobs for (multi-instance, only used with the cron scheduler).
+# When empty, pgquartz_jobs run as is. When set, every job runs once per instance instead:
+# {{ pgquartz_jobsdir }}/<job>.yml is rendered to {{ pgquartz_instancesdir }}/<instance>/<job>.yml with
+# - conn_params of the instance combined into the conn_params of every connection of the job;
+# - etcdConfig.lockKey prefixed with '<instance>/' (so instances don't block each other);
+# - logFile set to the logfolder of the instance (only when the job has a logFile).
+# Each item (key is the instance name) has:
+# - conn_params: libpq connection parameters for the instance (e.g. port, host, service)
+# - jobs: jobs to schedule for this instance, same format as pgquartz_jobs (default: pgquartz_jobs)
+# - logfolder: log folder for this instance (default: {{ pgquartz_logfolder }}/<instance>)
+pgquartz_instances: {}
+#  cluster1:
+#    conn_params:
+#      port: 5433
+#  cluster2:
+#    conn_params:
+#      port: 5434
+#    jobs:
+#      - name: myjob
+#        minute: "45"
+#        hour: "1"
+
 # When true, deploy the certificates below to ~/.postgresql/ of pgquartz_osuser
 # so that pgquartz can connect to PostgreSQL with client certificate authentication.
 pgquartz_cert_managed: true
@@ -75,8 +100,9 @@ pgquartz_cronvars:
     value: "{{ pgquartz_logfolder }}"
 
 # Content of /etc/logrotate.d/pgquartz (only used with the cron scheduler).
+# The second pattern covers the default log folders of pgquartz_instances.
 pgquartz_logrotate_config: |
-  {{ pgquartz_logfolder }}/*.log {
+  {{ pgquartz_logfolder }}/*.log {{ pgquartz_logfolder }}/*/*.log {
       daily
       rotate 7
       copytruncate

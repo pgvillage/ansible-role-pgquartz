@@ -19,6 +19,8 @@ Defaults are defined in [defaults/main.yml](../defaults/main.yml).
 | `pgquartz_local_packages` | `[]` | Local package files to copy and install |
 | `pgquartz_definitions` | `[]` | Git repositories with job definitions |
 | `pgquartz_jobs` | `[]` | Jobs to schedule |
+| `pgquartz_instancesdir` | `{{ pgquartz_configdir }}/instances` | Job definitions rendered per PostgreSQL instance |
+| `pgquartz_instances` | `{}` | PostgreSQL instances to run the jobs for (multi-instance) |
 | `pgquartz_cert_managed` | `true` | Deploy client certificates to `~/.postgresql/` |
 | `pgquartz_ca_chain` | `--- CA ---` | CA chain (`root.crt`) |
 | `pgquartz_cert` | `--- CERT ---` | Client certificate (`postgresql.crt`) |
@@ -149,7 +151,7 @@ Available implementations:
 
 | Value | Behaviour |
 | --- | --- |
-| `cron` | Checks out `pgquartz_definitions`, schedules `pgquartz_jobs` in `/etc/cron.d/pgquartz`, sets `pgquartz_cronvars` and deploys `pgquartz_logrotate_config` |
+| `cron` | Checks out `pgquartz_definitions`, schedules `pgquartz_jobs` (per instance with `pgquartz_instances`) in `/etc/cron.d/pgquartz`, sets `pgquartz_cronvars` and deploys `pgquartz_logrotate_config` |
 | `timer` | Deploys systemd `pgquartz.service` / `pgquartz.timer` units and removes the cron file and log folder |
 | `external` | Nothing is scheduled; scheduling is left to an external tool |
 
@@ -201,6 +203,67 @@ pgquartz_jobs:
     hour: "1"
 ```
 
+### `pgquartz_instances`
+
+PostgreSQL instances to run the jobs for (multi-instance, only used with the `cron` scheduler).
+
+When empty, `pgquartz_jobs` run as is (single instance). When set, every job runs once per instance instead,
+and the jobs of `pgquartz_jobs` are no longer scheduled without an instance (their cron entries are removed).
+For every instance and job the role renders `{{ pgquartz_jobsdir }}/<job>.yml` (after the git checkout of
+`pgquartz_definitions`) to `{{ pgquartz_instancesdir }}/<instance>/<job>.yml` and schedules
+`pgquartz -c '{{ pgquartz_instancesdir }}/<instance>/<job>.yml'` in `/etc/cron.d/pgquartz` as cron entry
+`pgQuartz job <instance> <job>`.
+
+The rendered job definition is a copy of the original job, with:
+
+| Setting | Rendered value |
+| --- | --- |
+| `connections.<name>.conn_params` | `conn_params` of the job connection, combined with `conn_params` of the instance (instance wins) |
+| `etcdConfig.lockKey` | `<instance>/<lockKey>` (`lockKey` defaults to the job name), so the same job for different instances does not wait for each other, while the same instance on other hosts still shares the lock |
+| `logFile` | `logfolder` of the instance, only when the job has a `logFile` (PgQuartz names log files `<date>_<job>.log`, which would otherwise collide) |
+| `workdir` | The folder of the original job definition, unless the job sets `workdir`, so relative `file:` references still resolve |
+
+Each item (the key is the instance name) has:
+
+| Key | Required | Default | Description |
+| --- | --- | --- | --- |
+| `conn_params` | no | `{}` | libpq connection parameters for the instance, e.g. `port`, `host` or `service` |
+| `jobs` | no | `pgquartz_jobs` | Jobs to schedule for this instance, same format as `pgquartz_jobs` |
+| `logfolder` | no | `{{ pgquartz_logfolder }}/<instance>` | Log folder for this instance (created with mode `0700`) |
+
+Default: `{}`
+
+Example (runs `myjob` for `cluster1` at 01:30 and for `cluster2` at 01:45):
+
+```yaml
+pgquartz_jobs:
+  - name: myjob
+    minute: "30"
+    hour: "1"
+
+pgquartz_instances:
+  cluster1:
+    conn_params:
+      port: 5433
+  cluster2:
+    conn_params:
+      port: 5434
+    jobs:
+      - name: myjob
+        minute: "45"
+        hour: "1"
+```
+
+!!! note
+    PgQuartz passes only the matrix arguments as environment to `shell` steps, so shell steps cannot tell which
+    instance they run for. Only `pg` steps (through `conn_params`) are instance aware.
+
+### `pgquartz_instancesdir`
+
+Directory holding the job definitions rendered per instance (see `pgquartz_instances`).
+
+Default: `{{ pgquartz_configdir }}/instances`
+
 ### `pgquartz_cron_mailto`
 
 Address cron mails job output to. Used for the `MAILTO` entry in `pgquartz_cronvars`.
@@ -229,7 +292,7 @@ Content of `/etc/logrotate.d/pgquartz` (only used with the `cron` scheduler).
 Default:
 
 ```
-{{ pgquartz_logfolder }}/*.log {
+{{ pgquartz_logfolder }}/*.log {{ pgquartz_logfolder }}/*/*.log {
     daily
     rotate 7
     copytruncate

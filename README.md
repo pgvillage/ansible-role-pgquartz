@@ -4,7 +4,7 @@ PgQuartz
 PgQuartz is a tool to define and execute PostgreSQL jobs.
 One of the fine things is that jobs can have multiple steps, each step can be a shell script or a PostgreSQL query, 
 each step can be run multiple parallel executions (github matrix style), and that whole definition can be managed with git.
-This role installs pgquartz and runs pgquartz jobs with cron.
+This role installs pgquartz and runs pgquartz jobs with cron, for one or (with `pgquartz_instances`) multiple PostgreSQL instances.
 This role is part of PgVillage, which is an opinated PostgreSQL deployment for Virtual Machines.
 
 Requirements

@@ -1,0 +1,55 @@
+---
+# Renders and schedules the pgquartz jobs for one PostgreSQL instance (an item of pgquartz_instances).
+# Included from jobs_cron.yml with loop_var pgquartz_instance and pgquartz_instance_jobs set.
+- name: Create job folders for instance {{ pgquartz_instance.key }}
+  ansible.builtin.file:
+    path: "{{ (pgquartz_instancesdir ~ '/' ~ pgquartz_instance.key ~ '/' ~ item.name) | dirname }}"
+    state: directory
+    owner: "{{ pgquartz_osuser }}"
+    group: "{{ pgquartz_osgroup }}"
+    mode: "0755"
+  loop: "{{ pgquartz_instance_jobs }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Create logfolder for instance {{ pgquartz_instance.key }}
+  ansible.builtin.file:
+    path: "{{ pgquartz_instance.value.logfolder | default(pgquartz_logfolder ~ '/' ~ pgquartz_instance.key, true) }}"
+    state: directory
+    owner: "{{ pgquartz_osuser }}"
+    group: "{{ pgquartz_osgroup }}"
+    mode: "0700"
+
+- name: Read job definitions for instance {{ pgquartz_instance.key }}
+  ansible.builtin.slurp:
+    src: "{{ pgquartz_jobsdir }}/{{ item.name }}.yml"
+  loop: "{{ pgquartz_instance_jobs }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: pgquartz_instance_definitions
+
+- name: Render job definitions for instance {{ pgquartz_instance.key }}
+  ansible.builtin.template:
+    src: instance_job.yml.j2
+    dest: "{{ pgquartz_instancesdir }}/{{ pgquartz_instance.key }}/{{ item.item.name }}.yml"
+    owner: "{{ pgquartz_osuser }}"
+    group: "{{ pgquartz_osgroup }}"
+    mode: "0640"
+  loop: "{{ pgquartz_instance_definitions.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Cronjobs for instance {{ pgquartz_instance.key }}
+  ansible.builtin.cron:
+    cron_file: pgquartz
+    user: "{{ pgquartz_osuser }}"
+    name: "pgQuartz job {{ pgquartz_instance.key }} {{ item.name }}"
+    job: "/usr/bin/pgquartz -c '{{ pgquartz_instancesdir }}/{{ pgquartz_instance.key }}/{{ item.name }}.yml' > /dev/null"
+    minute: "{{ item.minute | default('*') }}"
+    hour: "{{ item.hour | default('*') }}"
+    dom: "{{ item.dom | default('*') }}"
+    dow: "{{ item.dow | default('*') }}"
+    month: "{{ item.month | default('*') }}"
+  loop: "{{ pgquartz_instance_jobs }}"
+  loop_control:
+    label: "{{ item.name }}"

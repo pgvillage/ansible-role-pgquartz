@@ -1,0 +1,38 @@
+{#-
+  Renders the job definition {{ pgquartz_jobsdir }}/<job>.yml for one PostgreSQL instance.
+  Expects:
+  - pgquartz_instance: item of pgquartz_instances | dict2items
+  - item: result of slurping the job definition (item.item is the pgquartz_jobs entry)
+  Overrides (everything else is copied as is):
+  - connections.*.conn_params: combined with pgquartz_instance.value.conn_params
+  - etcdConfig.lockKey: prefixed with the instance name, so instances don't lock each other
+  - logFile: the instance log folder (only when the job has a logFile)
+  - workdir: the folder of the original job definition (unless set), so relative files still resolve
+-#}
+{%- set instance_name = pgquartz_instance.key -%}
+{%- set instance = pgquartz_instance.value | default({}, true) -%}
+{%- set job_name = item.item.name -%}
+{%- set job = item.content | b64decode | from_yaml -%}
+{%- set conn_params = {} -%}
+{%- for key, value in (instance.conn_params | default({}, true)).items() -%}
+{%-   set _ = conn_params.update({key: value | string}) -%}
+{%- endfor -%}
+{%- set connections = {} -%}
+{%- for conn_name, conn in (job.connections | default({}, true)).items() -%}
+{%-   set _ = connections.update({conn_name: conn | combine({'conn_params': (conn.conn_params | default({}, true)) | combine(conn_params)})}) -%}
+{%- endfor -%}
+{%- set etcd_config = job.etcdConfig | default({}, true) -%}
+{%- set overrides = {
+      'etcdConfig': etcd_config | combine({'lockKey': instance_name ~ '/' ~ (etcd_config.lockKey | default(job_name | basename, true))}),
+      'workdir': job.workdir | default((pgquartz_jobsdir ~ '/' ~ job_name) | dirname, true),
+    } -%}
+{%- if connections -%}
+{%-   set _ = overrides.update({'connections': connections}) -%}
+{%- endif -%}
+{%- if job.logFile | default('', true) -%}
+{%-   set _ = overrides.update({'logFile': instance.logfolder | default(pgquartz_logfolder ~ '/' ~ instance_name, true)}) -%}
+{%- endif -%}
+# {{ ansible_managed }}
+# Job {{ job_name }} for PostgreSQL instance {{ instance_name }},
+# rendered from {{ pgquartz_jobsdir }}/{{ job_name }}.yml
+{{ job | combine(overrides) | to_nice_yaml(indent=2) }}
