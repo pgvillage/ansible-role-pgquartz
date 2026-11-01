@@ -1,0 +1,66 @@
+---
+- name: Verify
+  hosts: all
+  tasks:
+    - name: Read the cron file
+      ansible.builtin.slurp:
+        src: /etc/cron.d/pgquartz
+      register: cron_file
+
+    - name: Check that the job is scheduled per instance only
+      ansible.builtin.assert:
+        that:
+          - cron_lines | select('match', "30 1 \* \* \* pgquartz /usr/bin/pgquartz -c '/etc/pgquartz/instances/cluster1/molecule.yml'") | list | length == 1
+          - cron_lines | select('match', "45 1 \* \* \* pgquartz /usr/bin/pgquartz -c '/etc/pgquartz/instances/cluster2/molecule.yml'") | list | length == 1
+          - cron_lines | select('match', "0 2 \* \* \* pgquartz /usr/bin/pgquartz -c '/etc/pgquartz/instances/cluster1/shell.yml'") | list | length == 1
+          # cluster2 only has the molecule job (jobs set per instance)
+          - cron_lines | select('search', "/etc/pgquartz/instances/cluster2/shell.yml") | list | length == 0
+          - cron_lines | select('search', "/etc/pgquartz/jobs/") | list | length == 0
+        fail_msg: "{{ cron_lines }}"
+      vars:
+        cron_lines: "{{ (cron_file.content | b64decode).splitlines() }}"
+
+    - name: Read the rendered job definitions
+      ansible.builtin.slurp:
+        src: "/etc/pgquartz/instances/{{ item }}/molecule.yml"
+      loop: [cluster1, cluster2]
+      register: rendered
+
+    - name: Check the instance settings in the rendered job definitions
+      ansible.builtin.assert:
+        that:
+          - job.connections.local.conn_params.port == expected_port
+          - job.connections.local.conn_params.host == '/var/run/postgresql'
+          - job.connections.local.conn_params.dbname == 'postgres'
+          - job.etcdConfig.lockKey == item.item ~ '/molecule'
+          - job.logFile == '/var/log/pgquartz/' ~ item.item
+          - job.workdir == '/etc/pgquartz/jobs'
+          - job.steps.query.commands[0].inline == 'select 1'
+          - job.connections.local.role == 'primary'
+        fail_msg: "{{ job | to_nice_yaml }}"
+      loop: "{{ rendered.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      vars:
+        job: "{{ item.content | b64decode | from_yaml }}"
+        expected_port: "{{ {'cluster1': '5433', 'cluster2': '5434'}[item.item] }}"
+
+    - name: Run the shell job of cluster1 like the cron entry does, as pgquartz
+      become: true
+      become_user: pgquartz
+      ansible.builtin.command: /usr/bin/pgquartz -c /etc/pgquartz/instances/cluster1/shell.yml
+      register: job_run
+      changed_when: false
+
+    - name: Look for the mark the job leaves and its log file
+      ansible.builtin.find:
+        paths: [/tmp, /var/log/pgquartz/cluster1]
+        patterns: ["molecule-pgquartz", "*_shell.log"]
+      register: found
+
+    - name: Check that the job ran and logged to the folder of cluster1
+      ansible.builtin.assert:
+        that:
+          - found.files | selectattr('path', 'equalto', '/tmp/molecule-pgquartz') | list | length == 1
+          - found.files | selectattr('path', 'match', '/var/log/pgquartz/cluster1/.*_shell.log') | list | length == 1
+        fail_msg: "{{ job_run.stdout_lines + job_run.stderr_lines + (found.files | map(attribute='path') | list) }}"

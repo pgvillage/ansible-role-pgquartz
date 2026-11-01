@@ -1,0 +1,75 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    pgquartz_cert_managed: false
+    pgquartz_scheduler: cron
+    pgquartz_cron_mailto: root
+    pgquartz_jobs:
+      - name: molecule
+        minute: "30"
+        hour: "1"
+      - name: shell
+        minute: "0"
+        hour: "2"
+    pgquartz_instances:
+      cluster1:
+        conn_params:
+          port: 5433
+      cluster2:
+        conn_params:
+          port: 5434
+        jobs:
+          - name: molecule
+            minute: "45"
+            hour: "1"
+  pre_tasks:
+    # The role renders the job definitions per instance, so they must exist
+    # (normally they come from a git checkout of pgquartz_definitions)
+    - name: Create the jobs folder
+      ansible.builtin.file:
+        path: /etc/pgquartz/jobs
+        state: directory
+        mode: "0755"
+
+    # molecule: with a connection, to check the rendered conn_params (pgquartz
+    # verifies the role of every connection on start, so it needs Postgres to run)
+    # shell: without connections, to run it
+    - name: Create the job definitions
+      ansible.builtin.copy:
+        dest: "/etc/pgquartz/jobs/{{ item.name }}.yml"
+        content: "{{ item.content }}"
+        mode: "0644"
+      loop:
+        - name: molecule
+          content: |
+            parallel: 1
+            timeout: 1m
+            logFile: /var/log/pgquartz
+            connections:
+              local:
+                role: primary
+                conn_params:
+                  host: /var/run/postgresql
+                  dbname: postgres
+            steps:
+              query:
+                commands:
+                  - name: Query
+                    type: pg
+                    inline: select 1
+        - name: shell
+          content: |
+            parallel: 1
+            timeout: 1m
+            logFile: /var/log/pgquartz
+            steps:
+              touch:
+                commands:
+                  - name: Leave a mark
+                    type: shell
+                    inline: echo ran > /tmp/molecule-pgquartz
+      loop_control:
+        label: "{{ item.name }}"
+  roles:
+    - role: pgvillage.pgquartz
