@@ -4,7 +4,8 @@
     name: "{{ pgquartz_osgroup }}"
     gid: "{{ pgquartz_gid }}"
     system: "true"
-    state: "{{ pgquartz_package_state }}"
+    # absent removes them, any other package state (present, latest) keeps them
+    state: "{{ 'absent' if pgquartz_package_state == 'absent' else 'present' }}"
 
 - name: "Create pgquartz_user"
   ansible.builtin.user:
@@ -13,7 +14,8 @@
     uid: "{{ pgquartz_uid }}"
     create_home: "true"
     system: "true"
-    state: "{{ pgquartz_package_state }}"
+    # absent removes them, any other package state (present, latest) keeps them
+    state: "{{ 'absent' if pgquartz_package_state == 'absent' else 'present' }}"
 
 - name: Get user infor for {{ pgquartz_osuser }}
   ansible.builtin.getent:
