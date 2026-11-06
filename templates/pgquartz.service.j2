@@ -10,4 +10,4 @@ After=network-online.target
 Type=oneshot
 User={{ pgquartz_osuser }}
 Group={{ pgquartz_osgroup }}
-ExecStart=/usr/bin/pgquartz -c "{{ item.config }}"
+ExecStart={{ pgquartz_bin }} -c "{{ item.config }}"

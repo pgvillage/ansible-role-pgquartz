@@ -21,6 +21,9 @@ pgquartz_gid: 9745
 # State of the pgquartz packages (present, absent, latest, ...).
 # Note tht pgquartz_osuser and pgquartz_osgroup are not created when we don't install (pgquartz_package_state=absent)
 pgquartz_package_state: present
+# The pgquartz binary that the cron jobs and systemd services run. The packages of the PgVillage apt repositories
+# before v0.0.4 (e.g. latest) install it in /usr/local/bin.
+pgquartz_bin: /usr/bin/pgquartz
 # Packages to install from the configured package repositories.
 pgquartz_packages:
   - pgquartz
