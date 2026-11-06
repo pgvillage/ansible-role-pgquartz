@@ -24,7 +24,7 @@
     cron_file: pgquartz
     user: "{{ pgquartz_osuser }}"
     name: "pgQuartz job {{ item.label }}"
-    job: "/usr/bin/pgquartz -c '{{ item.config }}' > /dev/null"
+    job: "{{ pgquartz_bin }} -c '{{ item.config }}' > /dev/null"
     minute: "{{ item.minute | default('*') }}"
     hour: "{{ item.hour | default('*') }}"
     dom: "{{ item.dom | default('*') }}"

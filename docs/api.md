@@ -15,6 +15,7 @@ Defaults are defined in [defaults/main.yml](../defaults/main.yml).
 | `pgquartz_uid` | `9745` | UID of `pgquartz_osuser` |
 | `pgquartz_gid` | `9745` | GID of `pgquartz_osgroup` |
 | `pgquartz_package_state` | `present` | State of packages, OS user and OS group |
+| `pgquartz_bin` | `/usr/bin/pgquartz` | The pgquartz binary that the cron jobs and systemd services run. The packages of the PgVillage apt repositories before v0.0.4 (e.g. `latest`) install it in `/usr/local/bin` |
 | `pgquartz_packages` | `[pgquartz, git]` | Packages to install from repositories |
 | `pgquartz_local_packages` | `[]` | Local package files to copy and install |
 | `pgquartz_definitions` | `[]` | Git repositories with job definitions |
