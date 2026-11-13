@@ -64,3 +64,72 @@
           - found.files | selectattr('path', 'equalto', '/tmp/molecule-pgquartz') | list | length == 1
           - found.files | selectattr('path', 'match', '/var/log/pgquartz/cluster1/.*_shell.log') | list | length == 1
         fail_msg: "{{ job_run.stdout_lines + job_run.stderr_lines + (found.files | map(attribute='path') | list) }}"
+
+# The role must fail clearly on what would otherwise schedule nothing, or run nothing
+- name: Verify the checks of the role
+  hosts: all
+  vars:
+    pgquartz_cert_managed: false
+    pgquartz_cron_mailto: root
+  tasks:
+    # pgquartz starts `parallel` runners: without parallel the job would run nothing
+    - name: Create a job definition without parallel
+      ansible.builtin.copy:
+        dest: /etc/pgquartz/jobs/noparallel.yml
+        content: |
+          timeout: 1m
+          steps:
+            touch:
+              commands:
+                - name: Leave a mark
+                  type: shell
+                  inline: echo ran > /tmp/molecule-noparallel
+        mode: "0644"
+
+    - name: Run the role with a job without parallel (rendered per instance)
+      block:
+        - name: Run the role
+          ansible.builtin.include_role:
+            name: pgvillage.pgquartz
+          vars:
+            pgquartz_scheduler: cron
+            pgquartz_jobs: []
+            pgquartz_instances:
+              cluster3:
+                conn_params:
+                  port: 5435
+                jobs:
+                  - name: noparallel
+
+        - name: The role should have failed
+          ansible.builtin.fail:
+            msg: The role accepted a job without parallel
+      rescue:
+        - name: Check that the role failed on parallel
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name is search('parallel')
+              - failed_msgs is search('/etc/pgquartz/instances/cluster3/noparallel.yml has no parallel')
+            fail_msg: "{{ ansible_failed_task.name }}: {{ failed_msgs }}"
+          vars:
+            # A loop fails with the messages of the items in results
+            failed_msgs: >-
+              {{ (ansible_failed_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed')
+                  | map(attribute='msg') | list + [ansible_failed_result.msg | default('')]) | join(' ') }}
+
+    - name: Run the role with an unsupported scheduler
+      block:
+        - name: Run the role
+          ansible.builtin.include_role:
+            name: pgvillage.pgquartz
+          vars:
+            pgquartz_scheduler: anacron
+
+        - name: The role should have failed
+          ansible.builtin.fail:
+            msg: The role accepted pgquartz_scheduler anacron
+      rescue:
+        - name: Check that the role failed on the scheduler
+          ansible.builtin.assert:
+            that: ansible_failed_result.msg is search("pgquartz_scheduler 'anacron' is not supported")
+            fail_msg: "{{ ansible_failed_task.name }}: {{ ansible_failed_result.msg | default('') }}"

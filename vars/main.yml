@@ -40,3 +40,10 @@ pgquartz_obsolete_units: >-
                  map('regex_replace', '^', '/etc/systemd/system/') | list) |
     list
   }}
+
+# Supported values of pgquartz_scheduler (each has a tasks/jobs_<scheduler>.yml).
+pgquartz_schedulers:
+  - systemd
+  - cron
+  - external
+  - timer

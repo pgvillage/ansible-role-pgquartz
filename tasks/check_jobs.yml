@@ -1,0 +1,28 @@
+---
+# Checks the job definitions of pgquartz_scheduled_jobs (with pgquartz_instances the rendered ones).
+# pgquartz starts `parallel` runners: with parallel 0 (or no parallel at all) it starts none, and the job
+# silently runs nothing. Job definitions that don't exist (yet) are not checked.
+- name: Find the job definitions
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ pgquartz_scheduled_jobs | map(attribute='config') | unique }}"
+  register: pgquartz_job_definition_stats
+
+- name: Read the job definitions
+  ansible.builtin.slurp:
+    src: "{{ item.item }}"
+  loop: "{{ pgquartz_job_definition_stats.results | selectattr('stat.exists') }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: pgquartz_job_definition_contents
+
+- name: Check that every job definition runs with at least one runner (parallel)
+  ansible.builtin.assert:
+    that: (((item.content | b64decode | from_yaml) | default({}, true)).parallel | default(0, true) | int) >= 1
+    fail_msg: >-
+      {{ item.item.item }} has no parallel setting (or parallel < 1): pgquartz then starts no runners and
+      the job runs nothing. Set parallel: 1 (or more) in the job definition.
+    quiet: true
+  loop: "{{ pgquartz_job_definition_contents.results }}"
+  loop_control:
+    label: "{{ item.item.item }}"

@@ -1,4 +1,12 @@
 ---
+- name: Check pgquartz_scheduler
+  ansible.builtin.assert:
+    that: pgquartz_scheduler in pgquartz_schedulers
+    fail_msg: >-
+      pgquartz_scheduler '{{ pgquartz_scheduler }}' is not supported,
+      use one of: {{ pgquartz_schedulers | join(', ') }}
+    quiet: true
+
 - name: Install
   ansible.builtin.include_tasks: "install.yml"
 - name: Job definitions
