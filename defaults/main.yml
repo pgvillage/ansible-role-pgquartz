@@ -22,7 +22,9 @@ pgquartz_gid: 9745
 # absent, and kept (present) with any other state.
 pgquartz_package_state: present
 # The pgquartz binary that the cron jobs and systemd services run. The packages of the PgVillage apt repositories
-# before v0.0.4 (e.g. latest) install it in /usr/local/bin.
+# before v0.0.4 (e.g. latest) install it in /usr/local/bin. When the role installs packages and this file is not there,
+# it fails before it changes the jobs: then set pgquartz_package_state: latest once, or pgquartz_bin:
+# /usr/local/bin/pgquartz.
 pgquartz_bin: /usr/bin/pgquartz
 # Packages to install from the configured package repositories.
 pgquartz_packages:
