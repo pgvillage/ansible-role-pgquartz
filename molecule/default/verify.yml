@@ -67,3 +67,37 @@
       ansible.builtin.assert:
         that: mark_file.stat.exists
         fail_msg: "{{ job_run.stdout_lines + job_run.stderr_lines }}"
+
+# An old package installed pgquartz in /usr/local/bin, while the jobs run
+# pgquartz_bin (/usr/bin/pgquartz). Simulate that by moving the binary away:
+# the install tasks must fail with a clear message.
+- name: Verify the failure when the pgquartz binary is missing
+  hosts: all
+  vars:
+    pgquartz_cert_managed: false
+  tasks:
+    - name: Move the pgquartz binary away, as if an old package put it in /usr/local/bin
+      ansible.builtin.command: mv /usr/bin/pgquartz /usr/local/bin/pgquartz
+      changed_when: true
+
+    - name: Run the install tasks with the binary missing
+      block:
+        - name: Run the install tasks of the role
+          ansible.builtin.include_role:
+            name: pgvillage.pgquartz
+            tasks_from: install.yml
+
+        - name: The role should have failed
+          ansible.builtin.fail:
+            msg: The role did not fail on the missing pgquartz binary
+      rescue:
+        - name: Check the failure message
+          ansible.builtin.assert:
+            that:
+              - "'/usr/bin/pgquartz does not exist' in ansible_failed_result.msg"
+              - "'pgquartz_package_state: latest' in ansible_failed_result.msg"
+            fail_msg: "{{ ansible_failed_result.msg }}"
+      always:
+        - name: Put the pgquartz binary back
+          ansible.builtin.command: mv /usr/local/bin/pgquartz /usr/bin/pgquartz
+          changed_when: true

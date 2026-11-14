@@ -15,7 +15,7 @@ Defaults are defined in [defaults/main.yml](../defaults/main.yml).
 | `pgquartz_uid` | `9745` | UID of `pgquartz_osuser` |
 | `pgquartz_gid` | `9745` | GID of `pgquartz_osgroup` |
 | `pgquartz_package_state` | `present` | State of the packages; `absent` also removes the OS user and group |
-| `pgquartz_bin` | `/usr/bin/pgquartz` | The pgquartz binary that the cron jobs and systemd services run. The packages of the PgVillage apt repositories before v0.0.4 (e.g. `latest`) install it in `/usr/local/bin` |
+| `pgquartz_bin` | `/usr/bin/pgquartz` | The pgquartz binary that the cron jobs and systemd services run. The packages of the PgVillage apt repositories before v0.0.4 (e.g. `latest`) install it in `/usr/local/bin`. When the role installs packages (state not `absent`) and this file is not there, it fails before it changes the jobs: set `pgquartz_package_state: latest` once to move to the new package, or set `pgquartz_bin: /usr/local/bin/pgquartz` to keep the old build. |
 | `pgquartz_packages` | `[pgquartz, git]` | Packages to install from repositories |
 | `pgquartz_local_packages` | `[]` | Local package files to copy and install |
 | `pgquartz_definitions` | `[]` | Git repositories with job definitions |

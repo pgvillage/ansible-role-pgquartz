@@ -76,9 +76,36 @@
     name: "/tmp/{{ item }}"
     state: "{{ pgquartz_package_state }}"
   loop: "{{ pgquartz_local_packages }}"
+  register: pgquartz_local_package_installed
 
 - name: Install pgquartz
   ansible.builtin.package:
     name: "{{ item }}"
     state: "{{ pgquartz_package_state }}"
   loop: "{{ pgquartz_packages }}"
+  register: pgquartz_package_installed
+
+# Older pgvillage packages installed pgquartz in /usr/local/bin, newer ones in
+# /usr/bin. With `present` an old package stays, and the jobs would run a
+# binary that is not there: fail before the jobs change.
+- name: Check that the pgquartz binary exists
+  ansible.builtin.stat:
+    path: "{{ pgquartz_bin }}"
+  register: pgquartz_binary
+  when:
+    - pgquartz_package_state != 'absent'
+    - (pgquartz_packages + pgquartz_local_packages) | length > 0
+
+- name: Fail when the pgquartz binary is missing
+  ansible.builtin.fail:
+    msg: >-
+      {{ pgquartz_bin }} does not exist after installing the pgquartz packages
+      (state {{ pgquartz_package_state }}).
+      Older pgvillage packages install pgquartz in /usr/local/bin.
+      Set pgquartz_package_state: latest (once) to move to the new package,
+      or set pgquartz_bin: /usr/local/bin/pgquartz to keep the old build.
+  when:
+    - pgquartz_binary is not skipped
+    - not pgquartz_binary.stat.exists
+    # In check mode a package that is not installed yet has no binary
+    - not (ansible_check_mode and (pgquartz_package_installed is changed or pgquartz_local_package_installed is changed))
