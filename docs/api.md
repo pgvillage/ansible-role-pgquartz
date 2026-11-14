@@ -157,8 +157,12 @@ Available implementations:
 | `external` | Nothing is scheduled; scheduling is left to an external tool |
 | `timer` | Deprecated alias of `systemd` |
 
+Other values fail with a clear message.
+
 With `cron` and `systemd` the role also checks out `pgquartz_definitions`, renders the jobs per instance
 (`pgquartz_instances`), creates `pgquartz_logfolder` and deploys `pgquartz_logrotate_config`.
+It also checks every job definition it schedules that exists: the role fails when a job has no `parallel`
+setting or `parallel` < 1, because pgquartz then starts no runners and the job silently runs nothing.
 Switching between `cron` and `systemd` cleans up the other one.
 
 Default: `systemd`

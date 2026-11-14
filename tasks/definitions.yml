@@ -25,6 +25,9 @@
     loop_var: pgquartz_instance
     label: "{{ pgquartz_instance.key }}"
 
+- name: Check the job definitions
+  ansible.builtin.include_tasks: check_jobs.yml
+
 - name: Add logrotate
   ansible.builtin.copy:
     content: "{{ pgquartz_logrotate_config }}"
